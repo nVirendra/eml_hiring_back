@@ -210,7 +210,7 @@ app.delete('/api/forms/:id', async (req, res) => {
 // Submit candidate response
 app.post('/api/responses', async (req, res) => {
   try {
-    const { formId, candidateInfo, responses } = req.body;
+    const { name, phone, email, dob, state, city, experience,questions,currentCompany, companyState, companyCity, noticePeriod, tech} = req.body;
 
     // Validate required fields
     if (!formId || !candidateInfo || !responses) {
