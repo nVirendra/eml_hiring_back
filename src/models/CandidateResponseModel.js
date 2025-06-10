@@ -1,9 +1,9 @@
 const mongoose = require('mongoose');
 
 const CandidateResponseSchema = new mongoose.Schema({
-  formId: {
+  techId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Form',
+    ref: 'FormModel',
     required: true
   },
   candidateInfo: {
@@ -23,6 +23,37 @@ const CandidateResponseSchema = new mongoose.Schema({
       trim: true
     },
     position: {
+      type: String,
+      trim: true
+    },
+    dob: {
+      type: String,
+      trim: true
+    },
+    state: {
+      type: String,
+      trim: true
+    },
+    city: {
+      type: String,
+      trim: true
+    },
+    experience: {
+      type: String,
+      trim: true
+    },
+    currentCompany: {
+      type: String,
+      trim: true
+    },companyState: {
+      type: String,
+      trim: true
+    },
+    companyCity: {
+      type: String,
+      trim: true
+    },
+    noticePeriod: {
       type: String,
       trim: true
     }
@@ -60,4 +91,4 @@ const CandidateResponseSchema = new mongoose.Schema({
   timestamps: true
 });
 
-module.exports = mongoose.Model('CandidateResponseModel',CandidateResponseSchema);
+module.exports = mongoose.model('CandidateResponseModel',CandidateResponseSchema);

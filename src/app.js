@@ -9,6 +9,7 @@ const authRoutes = require('./routes/auth.routes');
 const userRoutes = require('./routes/user.routes');
 const technologyRoutes = require('./routes/technology.routes');
 const FormModel = require('./models/FormModel');
+const CandidateResponseModel = require('./models/CandidateResponseModel')
 
 const app = express();
 
@@ -210,17 +211,9 @@ app.delete('/api/forms/:id', async (req, res) => {
 // Submit candidate response
 app.post('/api/responses', async (req, res) => {
   try {
-    const { name, phone, email, dob, state, city, experience,questions,currentCompany, companyState, companyCity, noticePeriod, tech} = req.body;
-
-    // Validate required fields
-    if (!formId || !candidateInfo || !responses) {
-      return res.status(400).json({
-        success: false,
-        message: 'Form ID, candidate info, and responses are required'
-      });
-    }
-
-    if (!candidateInfo.name || !candidateInfo.email) {
+    const { name, phone, email, dob, state, city, experience,questions,currentCompany, companyState, companyCity, noticePeriod,companyDesignation,  techId, tech} = req.body;
+  
+    if (!name || !email) {
       return res.status(400).json({
         success: false,
         message: 'Candidate name and email are required'
@@ -228,7 +221,7 @@ app.post('/api/responses', async (req, res) => {
     }
 
     // Check if form exists
-    const form = await Form.findById(formId);
+    const form = await FormModel.findById(techId);
     if (!form || !form.isActive) {
       return res.status(404).json({
         success: false,
@@ -237,9 +230,9 @@ app.post('/api/responses', async (req, res) => {
     }
 
     // Check if candidate already submitted response for this form
-    const existingResponse = await CandidateResponse.findOne({
-      formId: formId,
-      'candidateInfo.email': candidateInfo.email
+    const existingResponse = await CandidateResponseModel.findOne({
+      techId: techId,
+      'candidateInfo.email': email
     });
 
     if (existingResponse) {
@@ -248,45 +241,70 @@ app.post('/api/responses', async (req, res) => {
         message: 'Candidate has already submitted response for this form'
       });
     }
+    
+    
+    const questionsObj = questions;
+    // Assuming req.body.questions is the object with questionId: answer
+    
+      const processedResponses = [];
+      let totalScore = 0;
 
-    // Calculate scores
-    let totalScore = 0;
-    const processedResponses = [];
-
-    for (const response of responses) {
-      const question = form.questions.find(q => q.id === response.questionId);
-      if (!question) continue;
-
-      let pointsEarned = 0;
-      const answer = response.answer;
-
-      // Calculate points based on question type
-      if (question.type === 'number') {
-        const numAnswer = parseInt(answer) || 0;
-        pointsEarned = question.scoring.get(numAnswer.toString()) || 0;
-      } else if (question.type === 'select') {
-        pointsEarned = question.scoring.get(answer) || 0;
-      } else if (question.type === 'checkbox' && Array.isArray(answer)) {
-        pointsEarned = answer.reduce((sum, value) => {
-          return sum + (question.scoring.get(value) || 0);
-        }, 0);
-      }
-
-      processedResponses.push({
-        questionId: response.questionId,
-        questionText: question.question,
-        questionType: question.type,
-        answer: answer,
-        pointsEarned: pointsEarned
+      // Convert scoring to Map if it's not already
+      form.questions.forEach((q) => {
+        if (!(q.scoring instanceof Map)) {
+          q.scoring = new Map(Object.entries(q.scoring));
+        }
       });
 
-      totalScore += pointsEarned;
-    }
+      for (const [questionId, answer] of Object.entries(questionsObj)) {
+        const question = form.questions.find(q => q.id === questionId);
+        if (!question) continue;
 
+        let pointsEarned = 0;
+
+        if (question.type === 'number') {
+          const numAnswer = parseInt(answer) || 0;
+          pointsEarned = question.scoring.get(numAnswer.toString()) || 0;
+        } else if (question.type === 'select' || question.type === 'radio') {
+          pointsEarned = question.scoring.get(answer) || 0;
+        } else if (question.type === 'checkbox' && Array.isArray(answer)) {
+          pointsEarned = answer.reduce((sum, value) => {
+            return sum + (question.scoring.get(value) || 0);
+          }, 0);
+        }
+
+        processedResponses.push({
+          questionId,
+          questionText: question.question,
+          questionType: question.type,
+          answer,
+          pointsEarned
+        });
+
+        totalScore += pointsEarned;
+      }
+
+      //return { processedResponses, totalScore };
+    
+
+    
     // Create candidate response
-    const candidateResponse = new CandidateResponse({
-      formId,
-      candidateInfo,
+    const candidateResponse = new CandidateResponseModel({
+      techId,
+      candidateInfo:{
+        name,
+        email,
+        phone,
+        position:companyDesignation,
+        dob, 
+        state,
+        city,
+        experience,
+        currentCompany, 
+        companyState, 
+        companyCity, 
+        noticePeriod
+      },
       responses: processedResponses,
       totalScore
     });
@@ -303,13 +321,6 @@ app.post('/api/responses', async (req, res) => {
       }
     });
   } catch (error) {
-    if (error.code === 11000) {
-      return res.status(409).json({
-        success: false,
-        message: 'Candidate has already submitted response for this form'
-      });
-    }
-
     res.status(500).json({
       success: false,
       message: 'Error submitting response',
@@ -394,8 +405,8 @@ app.get('/api/forms/:formId/responses', async (req, res) => {
 // Get specific candidate response
 app.get('/api/responses/:id', async (req, res) => {
   try {
-    const response = await CandidateResponse.findById(req.params.id)
-      .populate('formId', 'title technology questions');
+    const response = await CandidateResponseModel.findById(req.params.id)
+      .populate('techId', 'title technology questions');
 
     if (!response) {
       return res.status(404).json({
@@ -484,16 +495,16 @@ app.get('/api/forms/:formId/leaderboard', async (req, res) => {
 // Dashboard statistics
 app.get('/api/dashboard/stats', async (req, res) => {
   try {
-    const totalForms = await Form.countDocuments({ isActive: true });
-    const totalResponses = await CandidateResponse.countDocuments();
+    const totalForms = await FormModel.countDocuments({ isActive: true });
+    const totalResponses = await CandidateResponseModel.countDocuments();
     
-    const recentResponses = await CandidateResponse.find()
-      .populate('formId', 'title technology')
+    const recentResponses = await CandidateResponseModel.find()
+      .populate('techId', 'title technology')
       .select('candidateInfo totalScore submittedAt')
       .sort({ submittedAt: -1 })
       .limit(5);
 
-    const topTechnologies = await Form.aggregate([
+    const topTechnologies = await FormModel.aggregate([
       { $match: { isActive: true } },
       { $group: { _id: '$technology', count: { $sum: 1 } } },
       { $sort: { count: -1 } },
