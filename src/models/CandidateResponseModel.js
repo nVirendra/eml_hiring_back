@@ -42,6 +42,11 @@ const CandidateResponseSchema = new mongoose.Schema({
       type: String,
       trim: true
     },
+    resumeUrl:{
+      type:String,
+      trim:true,
+      default:'',
+    },
     currentCompany: {
       type: String,
       trim: true
