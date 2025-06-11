@@ -12,7 +12,7 @@ const FormModel = require('./models/FormModel');
 const CandidateResponseModel = require('./models/CandidateResponseModel');
 
 const upload = require('./utils/upload');
-const cloudinary = require('../config/cloudinary');
+const cloudinary = require('./config/cloudinary');
 
 const app = express();
 
@@ -59,6 +59,7 @@ app.get('/api/forms', async (req, res) => {
       // }
     });
   } catch (error) {
+    console.log('get tech',error.message)
     res.status(500).json({
       success: false,
       message: 'Error fetching forms',
@@ -210,8 +211,27 @@ app.delete('/api/forms/:id', async (req, res) => {
 
 // ==================== CANDIDATE RESPONSE ROUTES ====================
 
+const uploadToCloudinary = (fileBuffer) => {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: 'eml_hire/resumes',
+        resource_type: 'auto',
+      },
+      (error, result) => {
+        if (error) return reject(error);
+        resolve(result);
+      }
+    );
+
+    stream.end(fileBuffer);
+  });
+};
+
+
+
 // Submit candidate response
-app.post('/api/responses', upload.single('resume'), async (req, res) => {
+app.post('/api/responses', upload.single('file'), async (req, res) => {
   try {
     const {
       name,
@@ -221,7 +241,6 @@ app.post('/api/responses', upload.single('resume'), async (req, res) => {
       state,
       city,
       experience,
-      resume,
       questions,
       currentCompany,
       companyState,
@@ -261,12 +280,10 @@ app.post('/api/responses', upload.single('resume'), async (req, res) => {
       });
     }
 
+    const resume = req.file;
+    var resumeUrl = '';
     if (resume) {
-      const result = await cloudinary.uploader.upload(resume.path, {
-        folder: 'eml_hisre/resumes',
-        resource_type: 'auto',
-      });
-
+      const result = await uploadToCloudinary(resume.buffer);
       resumeUrl = result.secure_url;
     }
 
@@ -347,6 +364,7 @@ app.post('/api/responses', upload.single('resume'), async (req, res) => {
       },
     });
   } catch (error) {
+    console.log(error.message);
     res.status(500).json({
       success: false,
       message: 'Error submitting response',
