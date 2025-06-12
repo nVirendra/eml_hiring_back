@@ -1,11 +1,6 @@
 const mongoose = require('mongoose');
 
 const FormSchema = new mongoose.Schema({
-  title: {
-    type: String,
-    required: true,
-    trim: true
-  },
   technology: {
     type: String,
     required: true,

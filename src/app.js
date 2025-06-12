@@ -97,13 +97,13 @@ app.get('/api/forms/:technology', async (req, res) => {
 // Create new form
 app.post('/api/forms', async (req, res) => {
   try {
-    const { title, technology, questions, createdBy } = req.body;
+    const {  technology, questions, createdBy } = req.body;
 
     // Validate required fields
-    if (!title || !technology || !questions || questions.length === 0) {
+    if (!technology || !questions || questions.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'Title, technology, and questions are required',
+        message: 'technology, and questions are required',
       });
     }
 
@@ -125,7 +125,6 @@ app.post('/api/forms', async (req, res) => {
     }
 
     const form = new FormModel({
-      title,
       technology,
       questions,
       createdBy: createdBy || 'admin',
@@ -288,7 +287,12 @@ app.post('/api/responses', upload.single('file'), async (req, res) => {
    // Check if candidate exists
     let candidate = await CandidateModel.findOne({ email });
     let candidateId;
-    if (!candidate) {
+    if (candidate) {
+        await CandidateModel.updateOne(
+        { _id: candidate._id },
+        { $set: candidateInfo }
+      );
+    }else{
       const newCandidate = new CandidateModel(candidateInfo);
       candidate = await newCandidate.save();
     }
@@ -323,6 +327,7 @@ app.post('/api/responses', upload.single('file'), async (req, res) => {
 
       const processedResponses = [];
       let totalScore = 0;
+      let actualTotalScore = 0;
 
       // Convert scoring to Map if it's not already
       form.questions.forEach((q) => {
@@ -331,21 +336,38 @@ app.post('/api/responses', upload.single('file'), async (req, res) => {
         }
       });
 
+      
+
       for (const [questionId, answer] of Object.entries(questionsObj)) {
         const question = form.questions.find((q) => q.id === questionId);
         if (!question) continue;
 
+        console.log( 'debug',question.type, question.scoring);
+
+
+        let actualPoints = 0;
         let pointsEarned = 0;
 
         if (question.type === 'number') {
           const numAnswer = parseInt(answer) || 0;
           pointsEarned = question.scoring.get(numAnswer.toString()) || 0;
+
+          // Take maximum value from scoring for number type
+        actualPoints = Math.max(...question.scoring.values());
+
         } else if (question.type === 'select' || question.type === 'radio') {
           pointsEarned = question.scoring.get(answer) || 0;
+
+          // Take maximum value from scoring for select/radio type
+          actualPoints = Math.max(...question.scoring.values());
+
         } else if (question.type === 'checkbox' && Array.isArray(answer)) {
           pointsEarned = answer.reduce((sum, value) => {
             return sum + (question.scoring.get(value) || 0);
           }, 0);
+
+          // Take sum of all scoring values for checkbox type
+          actualPoints = Array.from(question.scoring.values()).reduce((sum, value) => sum + value, 0);
         }
 
         processedResponses.push({
@@ -357,6 +379,7 @@ app.post('/api/responses', upload.single('file'), async (req, res) => {
         });
 
         totalScore += pointsEarned;
+        actualTotalScore += actualPoints;
       }
 
       // Create candidate response
@@ -365,6 +388,7 @@ app.post('/api/responses', upload.single('file'), async (req, res) => {
         candidateId:candidateId,
         responses: processedResponses,
         totalScore,
+        actualTotalScore,
       });
 
       const savedResponse = await candidateResponse.save();
@@ -584,7 +608,7 @@ app.get('/api/dashboard/stats', async (req, res) => {
     let recentResponses = await CandidateResponseModel.find()
       .populate('techId', 'title technology')
       .populate('candidateId') // candidate info
-      .select('candidateId totalScore submittedAt')
+      .select('candidateId totalScore actualTotalScore submittedAt')
       .sort({ submittedAt: -1 })
       .limit(5).lean();
 
@@ -595,12 +619,41 @@ app.get('/api/dashboard/stats', async (req, res) => {
   candidateId: undefined,
 }));
 
-    const topTechnologies = await FormModel.aggregate([
-      { $match: { isActive: true } },
-      { $group: { _id: '$technology', count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-      { $limit: 5 },
-    ]);
+    const topTechnologies = await CandidateResponseModel.aggregate([
+  {
+    $lookup: {
+      from: 'formmodels',  // FormModel collection name (should be lowercase by default in MongoDB)
+      localField: 'techId', // Local field (CandidateResponseModel) that references FormModel
+      foreignField: '_id',  // Foreign field in FormModel
+      as: 'form'  // Alias for the joined data
+    }
+  },
+  
+  {
+    $unwind: {
+      path: '$form',
+      preserveNullAndEmptyArrays: false  // Only keep those responses with an associated form
+    }
+  },
+  
+  {
+    $group: {
+      _id: '$form.technology', // Group by technology from FormModel
+      count: { $sum: 1 }  // Count the number of responses for each technology
+    }
+  },
+  // Step 4: Sort by count in descending order
+  {
+    $sort: { count: -1 }
+  },
+  // Step 5: Limit the result to the top 5 technologies
+  {
+    $limit: 5
+  }
+]);
+
+console.log('Top Technologies: ', topTechnologies);
+
 
     res.json({
       success: true,
@@ -620,4 +673,23 @@ app.get('/api/dashboard/stats', async (req, res) => {
   }
 });
 
+
+// app.get('/api/test', async(req,res)=>{
+// // debug 1749726782709 number 2 Map(4) { '1' => 2, '2' => 5, '3' => 10 }
+// // debug 1749726821485 checkbox [ 'Provider', 'BLoC' ] Map(3) { 'Provider' => 3, 'Riverpod' => 5, 'BLoC' => 4 }
+// // debug 1749726879485 select ListView Map(3) { 'GridView' => 4, 'Column' => 0, 'ListView' => 5 }
+// // debug 1749726973548 checkbox [ 'Dio', 'http' ] Map(3) { 'Dio' => 5, 'http' => 3, 'Retrofit' => 4 }
+// // debug 1749727027324 number 3 Map(5) { '1' => 2, '2' => 4, '3' => 6, '4' => 8, '5' => 10 }
+
+// const scoring = { '1' => 2, '2' => 5, '3' => 10 };//{ '1': 2, '2': 5, '3': 10 };
+// const values = Object.values(scoring); 
+//     const maxValue = Math.max(...values);
+//  res.json({
+//       success: true,
+//       data: {
+//         total:maxValue,
+//       },
+//     });
+
+// })
 module.exports = app;
