@@ -10,6 +10,7 @@ const userRoutes = require('./routes/user.routes');
 const technologyRoutes = require('./routes/technology.routes');
 const FormModel = require('./models/FormModel');
 const CandidateResponseModel = require('./models/CandidateResponseModel');
+const CandidateModel = require('./models/CandidateModel');
 
 const upload = require('./utils/upload');
 const cloudinary = require('./config/cloudinary');
@@ -238,6 +239,7 @@ app.post('/api/responses', upload.single('file'), async (req, res) => {
       phone,
       email,
       dob,
+      gender,
       state,
       city,
       experience,
@@ -258,28 +260,6 @@ app.post('/api/responses', upload.single('file'), async (req, res) => {
       });
     }
 
-    // Check if form exists
-    const form = await FormModel.findById(techId);
-    if (!form || !form.isActive) {
-      return res.status(404).json({
-        success: false,
-        message: 'Form not found or inactive',
-      });
-    }
-
-    // Check if candidate already submitted response for this form
-    const existingResponse = await CandidateResponseModel.findOne({
-      techId: techId,
-      'candidateInfo.email': email,
-    });
-
-    if (existingResponse) {
-      return res.status(409).json({
-        success: false,
-        message: 'Candidate has already submitted response for this form',
-      });
-    }
-
     const resume = req.file;
     var resumeUrl = '';
     if (resume) {
@@ -287,82 +267,130 @@ app.post('/api/responses', upload.single('file'), async (req, res) => {
       resumeUrl = result.secure_url;
     }
 
-    const questionsObj = questions;
-    // Assuming req.body.questions is the object with questionId: answer
+    const  candidateInfo =  {
+            name,
+            email,
+            phone,
+            position: companyDesignation,
+            dob,
+            gender,
+            state,
+            city,
+            experience,
+            resumeUrl,
+            currentCompany,
+            companyState,
+            companyCity,
+            noticePeriod,
+    };
 
-    const processedResponses = [];
-    let totalScore = 0;
 
-    // Convert scoring to Map if it's not already
-    form.questions.forEach((q) => {
-      if (!(q.scoring instanceof Map)) {
-        q.scoring = new Map(Object.entries(q.scoring));
+   // Check if candidate exists
+    let candidate = await CandidateModel.findOne({ email });
+    let candidateId;
+    if (!candidate) {
+      const newCandidate = new CandidateModel(candidateInfo);
+      candidate = await newCandidate.save();
+    }
+    candidateId = candidate._id;
+
+    //store candidate response if tech selected
+    if(techId){
+      // Check if form exists
+      const form = await FormModel.findById(techId);
+      if (!form || !form.isActive) {
+        return res.status(404).json({
+          success: false,
+          message: 'Form not found or inactive',
+        });
       }
-    });
 
-    for (const [questionId, answer] of Object.entries(questionsObj)) {
-      const question = form.questions.find((q) => q.id === questionId);
-      if (!question) continue;
-
-      let pointsEarned = 0;
-
-      if (question.type === 'number') {
-        const numAnswer = parseInt(answer) || 0;
-        pointsEarned = question.scoring.get(numAnswer.toString()) || 0;
-      } else if (question.type === 'select' || question.type === 'radio') {
-        pointsEarned = question.scoring.get(answer) || 0;
-      } else if (question.type === 'checkbox' && Array.isArray(answer)) {
-        pointsEarned = answer.reduce((sum, value) => {
-          return sum + (question.scoring.get(value) || 0);
-        }, 0);
-      }
-
-      processedResponses.push({
-        questionId,
-        questionText: question.question,
-        questionType: question.type,
-        answer,
-        pointsEarned,
+      // Check if candidate already submitted response for this form
+      const existingResponse = await CandidateResponseModel.findOne({
+        techId: techId,
+        candidateId: candidateId,
       });
 
-      totalScore += pointsEarned;
+      if (existingResponse) {
+        return res.status(409).json({
+          success: false,
+          message: 'Candidate has already submitted response for this form',
+        });
+      }
+
+      const questionsObj = questions;
+      // Assuming req.body.questions is the object with questionId: answer
+
+      const processedResponses = [];
+      let totalScore = 0;
+
+      // Convert scoring to Map if it's not already
+      form.questions.forEach((q) => {
+        if (!(q.scoring instanceof Map)) {
+          q.scoring = new Map(Object.entries(q.scoring));
+        }
+      });
+
+      for (const [questionId, answer] of Object.entries(questionsObj)) {
+        const question = form.questions.find((q) => q.id === questionId);
+        if (!question) continue;
+
+        let pointsEarned = 0;
+
+        if (question.type === 'number') {
+          const numAnswer = parseInt(answer) || 0;
+          pointsEarned = question.scoring.get(numAnswer.toString()) || 0;
+        } else if (question.type === 'select' || question.type === 'radio') {
+          pointsEarned = question.scoring.get(answer) || 0;
+        } else if (question.type === 'checkbox' && Array.isArray(answer)) {
+          pointsEarned = answer.reduce((sum, value) => {
+            return sum + (question.scoring.get(value) || 0);
+          }, 0);
+        }
+
+        processedResponses.push({
+          questionId,
+          questionText: question.question,
+          questionType: question.type,
+          answer,
+          pointsEarned,
+        });
+
+        totalScore += pointsEarned;
+      }
+
+      // Create candidate response
+      const candidateResponse = new CandidateResponseModel({
+        techId,
+        candidateId:candidateId,
+        responses: processedResponses,
+        totalScore,
+      });
+
+      const savedResponse = await candidateResponse.save();
+
+      res.status(201).json({
+        success: true,
+        message: 'Response submitted successfully',
+        data: {
+          responseId: savedResponse._id,
+          totalScore: savedResponse.totalScore,
+          submittedAt: savedResponse.submittedAt,
+        },
+      });
+
     }
 
-    //return { processedResponses, totalScore };
-
-    // Create candidate response
-    const candidateResponse = new CandidateResponseModel({
-      techId,
-      candidateInfo: {
-        name,
-        email,
-        phone,
-        position: companyDesignation,
-        dob,
-        state,
-        city,
-        experience,
-        resumeUrl,
-        currentCompany,
-        companyState,
-        companyCity,
-        noticePeriod,
-      },
-      responses: processedResponses,
-      totalScore,
-    });
-
-    const savedResponse = await candidateResponse.save();
 
     res.status(201).json({
-      success: true,
-      message: 'Response submitted successfully',
-      data: {
-        responseId: savedResponse._id,
-        totalScore: savedResponse.totalScore,
-        submittedAt: savedResponse.submittedAt,
-      },
-    });
+        success: true,
+        message: 'Caniddate information successfully saved',
+        data: {
+          candidateId:candidateId,
+        },
+      });
+
+    
   } catch (error) {
     console.log(error.message);
     res.status(500).json({
@@ -449,9 +477,10 @@ app.get('/api/forms/:formId/responses', async (req, res) => {
 // Get specific candidate response
 app.get('/api/responses/:id', async (req, res) => {
   try {
-    const response = await CandidateResponseModel.findById(
-      req.params.id
-    ).populate('techId', 'title technology questions');
+    const response = await CandidateResponseModel.findById(req.params.id)
+      .populate('techId', 'title technology questions')  // include form info
+      .populate('candidateId')                           // full candidate details
+      .lean();
 
     if (!response) {
       return res.status(404).json({
@@ -460,11 +489,19 @@ app.get('/api/responses/:id', async (req, res) => {
       });
     }
 
+    // Rename candidateId to candidateInfo for frontend clarity
+    const formattedResponse = {
+      ...response,
+      candidateInfo: response.candidateId,
+    };
+    delete formattedResponse.candidateId;
+
     res.json({
       success: true,
-      data: response,
+      data: formattedResponse,
     });
   } catch (error) {
+    console.error('Error fetching candidate response:', error.message);
     res.status(500).json({
       success: false,
       message: 'Error fetching response',
@@ -472,6 +509,7 @@ app.get('/api/responses/:id', async (req, res) => {
     });
   }
 });
+
 
 // Update candidate status
 app.patch('/api/responses/:id/status', async (req, res) => {
@@ -543,11 +581,19 @@ app.get('/api/dashboard/stats', async (req, res) => {
     const totalForms = await FormModel.countDocuments({ isActive: true });
     const totalResponses = await CandidateResponseModel.countDocuments();
 
-    const recentResponses = await CandidateResponseModel.find()
+    let recentResponses = await CandidateResponseModel.find()
       .populate('techId', 'title technology')
-      .select('candidateInfo totalScore submittedAt')
+      .populate('candidateId') // candidate info
+      .select('candidateId totalScore submittedAt')
       .sort({ submittedAt: -1 })
-      .limit(5);
+      .limit(5).lean();
+
+      // Rename candidateId to candidateInfo in result
+ recentResponses = recentResponses.map(resp => ({
+  ...resp,
+  candidateInfo: resp.candidateId,
+  candidateId: undefined,
+}));
 
     const topTechnologies = await FormModel.aggregate([
       { $match: { isActive: true } },
