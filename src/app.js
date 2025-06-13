@@ -606,7 +606,9 @@ app.get('/api/forms/:formId/leaderboard', async (req, res) => {
 app.get('/api/dashboard/stats', async (req, res) => {
   try {
 
-    const { tech } = req.query;
+    const { tech, page = 1, limit = 6 } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
     
     const techFilter = tech ? { techId: new ObjectId(tech) } : {};
 
@@ -614,12 +616,15 @@ app.get('/api/dashboard/stats', async (req, res) => {
     const totalForms = await FormModel.countDocuments({ isActive: true });
     const totalResponses = await CandidateResponseModel.countDocuments();
 
+    const totalTechResponseCount = await CandidateResponseModel.find(techFilter).countDocuments();
+
     let recentResponses = await CandidateResponseModel.find(techFilter)
       .populate('techId', 'title technology')
       .populate('candidateId') // candidate info
       .select('candidateId totalScore actualTotalScore submittedAt')
-      .sort({ submittedAt: -1 })
-      .limit(5).lean();
+      .sort({ totalScore: -1, submittedAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit)).lean();
 
       // Rename candidateId to candidateInfo in result
  recentResponses = recentResponses.map(resp => ({
@@ -677,6 +682,7 @@ const topTechnologies = await CandidateResponseModel.aggregate([
       data: {
         totalForms,
         totalResponses,
+        totalTechResponseCount,
         recentResponses,
         topTechnologies,
       },
