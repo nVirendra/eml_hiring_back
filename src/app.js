@@ -2,6 +2,9 @@ const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
 
+const mongoose = require('mongoose');
+const ObjectId = mongoose.Types.ObjectId;
+
 const dotenv = require('dotenv');
 dotenv.config();
 
@@ -602,10 +605,16 @@ app.get('/api/forms/:formId/leaderboard', async (req, res) => {
 // Dashboard statistics
 app.get('/api/dashboard/stats', async (req, res) => {
   try {
+
+    const { tech } = req.query;
+    
+    const techFilter = tech ? { techId: new ObjectId(tech) } : {};
+
+
     const totalForms = await FormModel.countDocuments({ isActive: true });
     const totalResponses = await CandidateResponseModel.countDocuments();
 
-    let recentResponses = await CandidateResponseModel.find()
+    let recentResponses = await CandidateResponseModel.find(techFilter)
       .populate('techId', 'title technology')
       .populate('candidateId') // candidate info
       .select('candidateId totalScore actualTotalScore submittedAt')
@@ -619,40 +628,48 @@ app.get('/api/dashboard/stats', async (req, res) => {
   candidateId: undefined,
 }));
 
-    const topTechnologies = await CandidateResponseModel.aggregate([
+const topTechnologies = await CandidateResponseModel.aggregate([
   {
     $lookup: {
-      from: 'formmodels',  // FormModel collection name (should be lowercase by default in MongoDB)
-      localField: 'techId', // Local field (CandidateResponseModel) that references FormModel
-      foreignField: '_id',  // Foreign field in FormModel
-      as: 'form'  // Alias for the joined data
+      from: 'formmodels',
+      localField: 'techId',
+      foreignField: '_id',
+      as: 'form'
     }
   },
-  
   {
     $unwind: {
       path: '$form',
-      preserveNullAndEmptyArrays: false  // Only keep those responses with an associated form
+      preserveNullAndEmptyArrays: false
     }
   },
-  
   {
     $group: {
-      _id: '$form.technology', // Group by technology from FormModel
-      count: { $sum: 1 }  // Count the number of responses for each technology
+      _id: {
+        technology: '$form.technology',
+        formId: '$form._id'
+      },
+      count: { $sum: 1 }
     }
   },
-  // Step 4: Sort by count in descending order
   {
     $sort: { count: -1 }
   },
-  // Step 5: Limit the result to the top 5 technologies
   {
     $limit: 5
+  },
+  {
+    $project: {
+      _id: 0,
+      technology: '$_id.technology',
+      formId: '$_id.formId',
+      count: 1
+    }
   }
 ]);
 
-console.log('Top Technologies: ', topTechnologies);
+
+
 
 
     res.json({
@@ -665,6 +682,7 @@ console.log('Top Technologies: ', topTechnologies);
       },
     });
   } catch (error) {
+    console.log(error.message);
     res.status(500).json({
       success: false,
       message: 'Error fetching dashboard stats',
@@ -674,22 +692,4 @@ console.log('Top Technologies: ', topTechnologies);
 });
 
 
-// app.get('/api/test', async(req,res)=>{
-// // debug 1749726782709 number 2 Map(4) { '1' => 2, '2' => 5, '3' => 10 }
-// // debug 1749726821485 checkbox [ 'Provider', 'BLoC' ] Map(3) { 'Provider' => 3, 'Riverpod' => 5, 'BLoC' => 4 }
-// // debug 1749726879485 select ListView Map(3) { 'GridView' => 4, 'Column' => 0, 'ListView' => 5 }
-// // debug 1749726973548 checkbox [ 'Dio', 'http' ] Map(3) { 'Dio' => 5, 'http' => 3, 'Retrofit' => 4 }
-// // debug 1749727027324 number 3 Map(5) { '1' => 2, '2' => 4, '3' => 6, '4' => 8, '5' => 10 }
-
-// const scoring = { '1' => 2, '2' => 5, '3' => 10 };//{ '1': 2, '2': 5, '3': 10 };
-// const values = Object.values(scoring); 
-//     const maxValue = Math.max(...values);
-//  res.json({
-//       success: true,
-//       data: {
-//         total:maxValue,
-//       },
-//     });
-
-// })
 module.exports = app;
