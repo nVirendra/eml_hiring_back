@@ -14,12 +14,17 @@ const authenticate = require('../middlewares/auth.middleware')
 
 
 
-const uploadToCloudinary = (fileBuffer) => {
+const uploadToCloudinary = (fileBuffer, originalName) => {
   return new Promise((resolve, reject) => {
+    const fileNameWithoutExt = originalName.split('.').slice(0, -1).join('-');
+
     const stream = cloudinary.uploader.upload_stream(
       {
         folder: 'eml_hire/resumes',
-        resource_type: 'auto',
+        resource_type: 'raw',
+        public_id: `${fileNameWithoutExt}-${Date.now()}`,
+        use_filename: true,
+        overwrite: true
       },
       (error, result) => {
         if (error) return reject(error);
@@ -30,6 +35,8 @@ const uploadToCloudinary = (fileBuffer) => {
     stream.end(fileBuffer);
   });
 };
+
+
 
 // Submit candidate response
 router.post('/', upload.single('file'), async (req, res) => {
@@ -63,7 +70,7 @@ router.post('/', upload.single('file'), async (req, res) => {
     const resume = req.file;
     var resumeUrl = '';
     if (resume) {
-      const result = await uploadToCloudinary(resume.buffer);
+      const result = await uploadToCloudinary(resume.buffer,resume.originalname);
       resumeUrl = result.secure_url;
     }
 
