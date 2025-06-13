@@ -2,7 +2,7 @@ const { body, validationResult } = require('express-validator');
 
 // Register validations
 const validateRegister = [
-  body('firstName').notEmpty().withMessage('First name is required'),
+  body('name').notEmpty().withMessage('First name is required'),
 
   body('email').isEmail().withMessage('Valid email is required'),
 
@@ -17,8 +17,6 @@ const validateRegister = [
     .withMessage('Password must contain at least one number')
     .matches(/[@$!%*?&#]/)
     .withMessage('Password must contain at least one special character'),
-
-  body('phone').isMobilePhone().withMessage('Valid phone number is required'),
 
   // Middleware to handle validation errors
   (req, res, next) => {

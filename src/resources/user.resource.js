@@ -1,14 +1,12 @@
 exports.UserResource = (user) => ({
   id: user._id,
-  fullName: user.fullName,
+  name: user.name,
   email: user.email,
 });
 exports.UserListResource = (users) => {
   return users.map((user) => ({
-    id: user._id,
-    fullName: user.fullName,
+     id: user._id,
+    name: user.name,
     email: user.email,
-    role: user.role,
-    createdAt: user.createdAt,
   }));
 };

@@ -12,35 +12,19 @@ exports.register = async (userData) => {
 
   // Destructure and normalize input
   const {
-    firstName,
-    middleName = '', // provide defaults for optional fields
-    lastName = '',
+    name,
     email,
-    phone,
-    role,
-    businessId = null,
     password,
   } = userData;
 
-  // Generate fullName
-  const fullName = `${firstName} ${middleName} ${lastName}`
-    .replace(/\s+/g, ' ')
-    .trim();
-  console.log('Full Name:', fullName);
-  // Hash password
+  
   const hashedPassword = await bcrypt.hash(password, 10);
 
   // Create user document
   const newUser = new UserModel({
-    firstName,
-    middleName,
-    lastName,
-    fullName,
+    name,
     email,
-    phone,
     password: hashedPassword,
-    role,
-    businessId,
   });
 
   // Save to DB
@@ -54,7 +38,6 @@ exports.login = async (email, password) => {
   if (!user) {
     throw new AppError('User not found', 404);
   }
-
   const isMatch = await bcrypt.compare(password, user.password);
   if (!isMatch) {
     throw new AppError('Invalid credentials', 401);
