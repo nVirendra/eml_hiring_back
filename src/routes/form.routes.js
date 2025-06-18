@@ -62,7 +62,7 @@ router.get('/:technology', async (req, res) => {
 });
 
 // Create a new form
-router.post('/', authenticate, async (req, res) => {
+router.post('/',  authenticate, async (req, res) => {
  try {
      const {  technology, questions, createdBy } = req.body;
  
@@ -113,6 +113,71 @@ router.post('/', authenticate, async (req, res) => {
      });
    }
 });
+
+
+router.put('/:id', async (req, res) => {
+    try {
+      const {
+        technology,
+        questions,
+        isActive,
+      } = req.body;
+      console.log('questions: ',questions);
+      // Process questions to ensure proper structure
+      const processedQuestions = questions.map(question => ({
+        ...question,
+        id: question.id || Date.now().toString() + Math.random().toString(36).substr(2, 9),
+        options: question.options.map(option => ({
+          ...option,
+          _id: option._id || new mongoose.Types.ObjectId()
+        }))
+      }));
+
+      const updatedForm = await FormModel.findByIdAndUpdate(
+        req.params.id,
+        {
+          technology,
+          questions: processedQuestions,
+          isActive,
+          updatedAt: new Date()
+        }
+      );
+
+      if (!updatedForm) {
+        return res.status(404).json({
+          success: false,
+          message: 'Evaluation form not found'
+        });
+      }
+
+      res.json({
+        success: true,
+        message: 'Evaluation form updated successfully',
+        data: updatedForm
+      });
+    } catch (error) {
+      console.error('Error updating evaluation form:', error);
+      
+      if (error.name === 'ValidationError') {
+        return res.status(400).json({
+          success: false,
+          message: 'Validation error',
+          errors: Object.values(error.errors).map(err => ({
+            field: err.path,
+            message: err.message
+          }))
+        });
+      }
+
+      res.status(500).json({
+        success: false,
+        message: 'Failed to update evaluation form',
+        error: error.message
+      });
+    }
+  }
+);
+
 
 
 module.exports = router;
