@@ -118,17 +118,17 @@ router.post('/', upload.single('file'), async (req, res) => {
       }
 
       // Check if candidate already submitted response for this form
-      const existingResponse = await CandidateResponseModel.findOne({
-        techId: techId,
-        candidateId: candidateId,
-      });
+      // const existingResponse = await CandidateResponseModel.findOne({
+      //   techId: techId,
+      //   candidateId: candidateId,
+      // });
 
-      if (existingResponse) {
-        return res.status(409).json({
-          success: false,
-          message: 'Candidate has already submitted response for this form',
-        });
-      }
+      // if (existingResponse) {
+      //   return res.status(409).json({
+      //     success: false,
+      //     message: 'Candidate has already submitted response for this form',
+      //   });
+      // }
 
       const questionsObj = questions;
       // Assuming req.body.questions is the object with questionId: answer
