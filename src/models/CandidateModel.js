@@ -45,6 +45,10 @@ const CandidateSchema = new mongoose.Schema({
       default: 0,
       trim: true
     },
+    selfDeclaration: {
+      type: Boolean,
+      default: false,
+    },
     resumeUrl:{
       type:String,
       trim:true,
