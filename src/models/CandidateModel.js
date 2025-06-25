@@ -36,8 +36,13 @@ const CandidateSchema = new mongoose.Schema({
       type: String,
       trim: true
     },
+    permanent_city: {
+      type: String,
+      trim: true
+    },
     experience: {
       type: String,
+      default: 0,
       trim: true
     },
     resumeUrl:{
